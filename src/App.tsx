@@ -1,38 +1,64 @@
-import { VFC, useRef, useState, useEffect } from "react";
-import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
-import styles from "./Editor.module.css";
+import { ReactNode, Fragment, useState } from "react";
+import { Button, Select } from "antd";
+import { css } from "@emotion/css";
+import MonacoBase from "./components/monaco-editor/base";
+import MonacoZone from "./components/monaco-editor/zone";
+
+const demoList: {
+  key: string;
+  group: string;
+  description: string;
+  reactNode: ReactNode;
+}[] = [
+  {
+    key: "base",
+    group: "monaco",
+    description: "基础",
+    reactNode: <MonacoBase key="base"></MonacoBase>,
+  },
+  {
+    key: "zone",
+    group: "monaco",
+    description: "部分行上方渲染自定义dom",
+    reactNode: <MonacoZone key="zone"></MonacoZone>,
+  },
+];
 
 export function App() {
-  const [editor, setEditor] =
-    useState<monaco.editor.IStandaloneCodeEditor | null>(null);
-  const monacoEl = useRef(null);
+  const [value, setValue] = useState(demoList[0].key);
 
-  useEffect(() => {
-    if (monacoEl) {
-      setEditor((editor) => {
-        if (editor) return editor;
+  const [num, setNum] = useState(0);
+  const refresh = () => {
+    setNum(num + 1);
+  };
 
-        return monaco.editor.create(monacoEl.current!, {
-          value: ["function x() {", '\tconsole.log("Hello world!");', "}"].join(
-            "\n"
-          ),
-          dropIntoEditor: {
-            enabled: true,
-            showDropSelector: "afterDrop",
-          },
-          language: "typescript",
-        });
-      });
-    }
-
-    editor?.onMouseUp((e) => {
-      console.log(e);
-    });
-    editor?.on
-
-    return () => editor?.dispose();
-  }, [monacoEl.current]);
-
-
-  return <div className={styles.Editor} ref={monacoEl}></div>;
+  return (
+    <div
+      className={css({
+        width: "100vw",
+        height: "100vh",
+        display: "flex",
+        flexDirection: "column",
+      })}
+    >
+      <Select
+        value={value}
+        style={{ width: 400 }}
+        onChange={setValue}
+        options={demoList.map((demo) => ({
+          value: demo.key,
+          label: `${demo.group}-${demo.description}`,
+        }))}
+      />
+      <Button onClick={refresh}>refresh</Button>
+      <div
+        className={css({
+          flex: "1",
+        })}
+        key={num}
+      >
+        {demoList.find((demo) => demo.key === value)?.reactNode}
+      </div>
+    </div>
+  );
 }
