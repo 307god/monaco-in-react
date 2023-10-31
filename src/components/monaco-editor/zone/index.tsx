@@ -2,6 +2,8 @@ import { VFC, useRef, useState, useEffect, Fragment } from "react";
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
 import { css } from "@emotion/css";
 import { Button } from "antd";
+import { createRoot, Root } from "react-dom/client";
+import Variable from "./variable";
 
 function getRandomInt(min: number, max: number) {
   min = Math.ceil(min);
@@ -10,12 +12,145 @@ function getRandomInt(min: number, max: number) {
   return new Array(num).fill("1").join("");
 }
 
+type Data = {
+  lineNumber: number;
+  variables: { name: string; value: string; id: string }[];
+}[];
+type RootItem = { id: string; root: Root };
+
+function refreshData(rootItems: RootItem[], data: Data) {
+  rootItems.forEach((o) => {
+    const dataItem = data
+      .map((o) => o.variables)
+      .flat()
+      .find((dataItem) => dataItem.id === o.id);
+    if (dataItem) {
+      o.root.render(
+        <Variable name={dataItem.name} value={dataItem.value}></Variable>,
+      );
+    }
+  });
+}
+
 export default function App() {
   const [editor, setEditor] =
     useState<monaco.editor.IStandaloneCodeEditor | null>(null);
   const monacoEl = useRef<HTMLDivElement>(null);
 
-  let disposables: (() => void)[] = [];
+  const [monitored, setMonitored] = useState(false);
+
+  useEffect(() => {
+    // 监控开始
+    if (monitored) {
+      const data: Data = [
+        {
+          lineNumber: 1,
+          variables: [
+            {
+              id: "1",
+              name: "变量1",
+              value: ``,
+            },
+            {
+              id: "3",
+              name: "变量3",
+              value: ``,
+            },
+          ],
+        },
+        {
+          lineNumber: 4,
+          variables: [
+            {
+              id: "2",
+              name: "变量2",
+              value: ``,
+            },
+          ],
+        },
+      ];
+      let zoneIds: string[] = [];
+
+      const zoneOptions: monaco.editor.IViewZone[] = [];
+      const rootItems: RootItem[] = [];
+      data.forEach((dataItem) => {
+        const div = (() => {
+          const div = document.createElement("div");
+          dataItem.variables.forEach((variable) => {
+            const span = document.createElement("span");
+            div.appendChild(span);
+            const root = createRoot(span);
+            rootItems.push({
+              id: variable.id,
+              root,
+            });
+          });
+          return div;
+        })();
+
+        zoneOptions.push({
+          afterLineNumber: dataItem.lineNumber,
+          heightInLines: 1,
+          domNode: div,
+        });
+      });
+
+      refreshData(rootItems, data);
+
+      editor?.changeViewZones((changeAccessor) => {
+        zoneIds = zoneOptions.map((zoneOption) => {
+          return changeAccessor.addZone(zoneOption);
+        });
+      });
+
+      const timer = setInterval(() => {
+        // 刷新值
+        const data = [
+          {
+            lineNumber: 1,
+            variables: [
+              {
+                id: "1",
+                name: "变量1",
+                value: `${getRandomInt(1, 10)}`,
+              },
+              {
+                id: "3",
+                name: "变量3",
+                value: `${getRandomInt(1, 10)}`,
+              },
+            ],
+          },
+          {
+            lineNumber: 4,
+            variables: [
+              {
+                id: "2",
+                name: "变量2",
+                value: `${getRandomInt(1, 10)}`,
+              },
+            ],
+          },
+        ];
+
+        refreshData(rootItems, data);
+      }, 500);
+      return () => {
+        clearInterval(timer);
+        editor?.changeViewZones((changeAccessor) => {
+          zoneIds.forEach((zoneId) => changeAccessor.removeZone(zoneId));
+        });
+      };
+    }
+  }, [monitored]);
+
+  const removeZone = () => {
+    setMonitored(false);
+  };
+
+  const addZone = () => {
+    setMonitored(true);
+  };
 
   const buildEditor = () => {
     setEditor((editor) => {
@@ -42,7 +177,7 @@ export default function App() {
           "1",
           "1",
         ].join("\n"),
-        language: "typescript",
+        language: "javascript",
         automaticLayout: true,
         inlineSuggest: {
           enabled: true,
@@ -53,60 +188,12 @@ export default function App() {
     });
   };
 
-  const addZone = () => {
-    const zoneOptions: monaco.editor.IViewZone = {
-      afterLineNumber: 5,
-      heightInLines: 1,
-      domNode: (() => {
-        const domNode = document.createElement("div");
-        domNode.textContent = `变量1:${getRandomInt(
-          1,
-          10,
-        )}, 变量2:${getRandomInt(1, 10)}`;
-        domNode.style.color = "red";
-        domNode.style.border = "1px solid yellow";
-        domNode.style.fontSize = "12px";
-        return domNode;
-      })(),
-    };
-
-    let zoneId: string;
-    if (editor) {
-      editor.changeViewZones((changeAccessor) => {
-        console.log("addZone");
-        zoneId = changeAccessor.addZone(zoneOptions);
-      });
-
-      const a = setInterval(() => {
-        zoneOptions.heightInLines = 1;
-        zoneOptions.domNode.textContent = `变量1:${getRandomInt(
-          1,
-          10,
-        )}, 变量2:${getRandomInt(1, 10)}`;
-        editor.changeViewZones((changeAccessor) => {
-          console.log("layoutZone");
-          changeAccessor.layoutZone(zoneId);
-        });
-      }, 500);
-
-      disposables.push(() => clearInterval(a));
-
-      // setTimeout(() => {
-      //   editor.changeViewZones((changeAccessor) => {
-      //     console.log("removeZone");
-      //     changeAccessor.removeZone(zoneId);
-      //   });
-      // }, 4000);
-    }
-  };
-
   useEffect(() => {
     if (monacoEl) {
       buildEditor();
     }
 
     return () => {
-      disposables.forEach((o) => o());
       editor?.dispose();
     };
   }, [monacoEl.current]);
@@ -131,6 +218,18 @@ export default function App() {
         }}
       >
         addZone
+      </Button>
+      <Button
+        className={css({
+          position: "fixed",
+          right: "100px",
+          top: "0",
+        })}
+        onClick={() => {
+          removeZone();
+        }}
+      >
+        removeZone
       </Button>
     </Fragment>
   );
