@@ -1,9 +1,10 @@
-import { VFC, useRef, useState, useEffect, Fragment } from "react";
+import { FC, useRef, useState, useEffect, Fragment } from "react";
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
 import { css } from "@emotion/css";
 import { Button } from "antd";
 import { createRoot, Root } from "react-dom/client";
 import Variable from "./variable";
+import { addStyle } from "../../../util/style";
 
 function getRandomInt(min: number, max: number) {
   min = Math.ceil(min);
@@ -18,7 +19,7 @@ type Data = {
 }[];
 type RootItem = { id: string; root: Root };
 
-function refreshData(rootItems: RootItem[], data: Data) {
+function refreshData(rootItems: RootItem[], data: Data, fontSize?: number) {
   rootItems.forEach((o) => {
     const dataItem = data
       .map((o) => o.variables)
@@ -26,7 +27,11 @@ function refreshData(rootItems: RootItem[], data: Data) {
       .find((dataItem) => dataItem.id === o.id);
     if (dataItem) {
       o.root.render(
-        <Variable name={dataItem.name} value={dataItem.value}></Variable>,
+        <Variable
+          name={dataItem.name}
+          value={dataItem.value}
+          fontSize={fontSize}
+        ></Variable>,
       );
     }
   });
@@ -77,9 +82,10 @@ export default function App() {
         const div = (() => {
           const div = document.createElement("div");
           dataItem.variables.forEach((variable) => {
-            const span = document.createElement("span");
-            div.appendChild(span);
-            const root = createRoot(span);
+            const varDiv = document.createElement("div");
+            addStyle(varDiv, { display: "flex", float: "left" });
+            div.appendChild(varDiv);
+            const root = createRoot(varDiv);
             rootItems.push({
               id: variable.id,
               root,
@@ -102,6 +108,21 @@ export default function App() {
           return changeAccessor.addZone(zoneOption);
         });
       });
+
+      // editor?.getOption(monaco.editor.EditorOption.fontSize)
+      const editorDidChangeConfiguration = editor?.onDidChangeConfiguration(
+        () => {
+          editor?.changeViewZones((changeAccessor) => {
+            zoneIds.forEach((zoneId) => changeAccessor.layoutZone(zoneId));
+          });
+          refreshData(
+            rootItems,
+            data,
+            editor?.getOption(monaco.editor.EditorOption.fontSize),
+          );
+          console.log(editor?.getOption(monaco.editor.EditorOption.fontSize));
+        },
+      );
 
       const timer = setInterval(() => {
         // 刷新值
@@ -137,6 +158,7 @@ export default function App() {
       }, 500);
       return () => {
         clearInterval(timer);
+        editorDidChangeConfiguration?.dispose();
         editor?.changeViewZones((changeAccessor) => {
           zoneIds.forEach((zoneId) => changeAccessor.removeZone(zoneId));
         });
@@ -182,6 +204,7 @@ export default function App() {
         inlineSuggest: {
           enabled: true,
         },
+        mouseWheelZoom: true,
       });
 
       return myEditor;
