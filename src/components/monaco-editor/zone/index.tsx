@@ -6,6 +6,7 @@ import { createRoot, Root } from "react-dom/client";
 import Variable from "./variable";
 import { addStyle } from "../../../util/style";
 
+// 获取随机长度数据
 function getRandomInt(min: number, max: number) {
   min = Math.ceil(min);
   max = Math.floor(max);
@@ -13,13 +14,23 @@ function getRandomInt(min: number, max: number) {
   return new Array(num).fill("1").join("");
 }
 
+// 假定的数据类型
 type Data = {
   lineNumber: number;
   variables: { name: string; value: string; id: string }[];
 }[];
+// 管理 变量渲染的react-root节点 类型
 type RootItem = { id: string; root: Root };
 
-function refreshData(rootItems: RootItem[], data: Data, fontSize?: number) {
+// 根据数据刷新变量节点
+function reRenderData(
+  rootItems: RootItem[],
+  data: Data,
+  options?: {
+    fontSize?: number;
+    multiplier?: number;
+  },
+) {
   rootItems.forEach((o) => {
     const dataItem = data
       .map((o) => o.variables)
@@ -30,7 +41,8 @@ function refreshData(rootItems: RootItem[], data: Data, fontSize?: number) {
         <Variable
           name={dataItem.name}
           value={dataItem.value}
-          fontSize={fontSize}
+          fontSize={options?.fontSize}
+          multiplier={options?.multiplier}
         ></Variable>,
       );
     }
@@ -47,6 +59,7 @@ export default function App() {
   useEffect(() => {
     // 监控开始
     if (monitored) {
+      // 初始数据
       const data: Data = [
         {
           lineNumber: 1,
@@ -74,10 +87,21 @@ export default function App() {
           ],
         },
       ];
+      // 生成的zone的id集合
       let zoneIds: string[] = [];
-
+      // 用来生成zone的option集合
       const zoneOptions: monaco.editor.IViewZone[] = [];
+      // 变量渲染的react-root节点结合
       const rootItems: RootItem[] = [];
+
+      const refreshData = (data: Data) => {
+        reRenderData(rootItems, data, {
+          fontSize: editor?.getOption(monaco.editor.EditorOption.fontSize),
+          multiplier: 1 + monaco.editor.EditorZoom.getZoomLevel() * 0.1,
+        });
+      };
+
+      // 构建数据
       data.forEach((dataItem) => {
         const div = (() => {
           const div = document.createElement("div");
@@ -101,28 +125,23 @@ export default function App() {
         });
       });
 
-      refreshData(rootItems, data);
+      // 刷新数据
+      refreshData(data);
 
+      // addZone
       editor?.changeViewZones((changeAccessor) => {
         zoneIds = zoneOptions.map((zoneOption) => {
           return changeAccessor.addZone(zoneOption);
         });
       });
 
-      // editor?.getOption(monaco.editor.EditorOption.fontSize)
-      const editorDidChangeConfiguration = editor?.onDidChangeConfiguration(
-        () => {
-          editor?.changeViewZones((changeAccessor) => {
-            zoneIds.forEach((zoneId) => changeAccessor.layoutZone(zoneId));
-          });
-          refreshData(
-            rootItems,
-            data,
-            editor?.getOption(monaco.editor.EditorOption.fontSize),
-          );
-          console.log(editor?.getOption(monaco.editor.EditorOption.fontSize));
-        },
-      );
+      // editor zoom 修改监听
+      const editorDidContentSizeChange = editor?.onDidContentSizeChange((e) => {
+        editor?.changeViewZones((changeAccessor) => {
+          zoneIds.forEach((zoneId) => changeAccessor.layoutZone(zoneId));
+        });
+        refreshData(data);
+      });
 
       const timer = setInterval(() => {
         // 刷新值
@@ -154,11 +173,11 @@ export default function App() {
           },
         ];
 
-        refreshData(rootItems, data);
+        refreshData(data);
       }, 500);
       return () => {
         clearInterval(timer);
-        editorDidChangeConfiguration?.dispose();
+        editorDidContentSizeChange?.dispose();
         editor?.changeViewZones((changeAccessor) => {
           zoneIds.forEach((zoneId) => changeAccessor.removeZone(zoneId));
         });
